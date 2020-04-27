@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  image-builder-component-chef
+
+  Sample SAM Template for image-builder-component-chef
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  ChefComponentFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: component_files/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      Policies: 
+        - Version: '2012-10-17' # Custom Policy Document
+          Statement:
+            - Effect: Allow
+              Action:
+                - ec2:DescribeImages # For describing images shared with Account by ImageBuilder Account
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  ChefComponentFunction:
+    Description: "Chef Component Lambda Function ARN"
+    Value: !GetAtt ChefComponentFunction.Arn
+  ChefComponentFunctionIamRole:
+    Description: "Implicit IAM Role created for Chef Component function"
+    Value: !GetAtt ChefComponentFunctionRole.Arn

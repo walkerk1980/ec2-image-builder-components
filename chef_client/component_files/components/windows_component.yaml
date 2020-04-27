@@ -1,0 +1,36 @@
+name: install_chef_windows
+description: This component installs the Chef Client on Windows.
+schemaVersion: 1.0
+version: 1.0.1
+
+phases:
+  - name: build
+    steps:
+      - name: HelloWorldStep
+        action: ExecutePowerShell
+        inputs:
+          commands:
+            - $chef_downloads_uri = 'https://downloads.chef.io/chef'
+            - $chef_download_location = $env:TEMP + '\chef_install.msi'
+            - $chef_downloads_root = Invoke-WebRequest -Uri $chef_downloads_uri -UseBasicParsing
+            - $chef_download_uri_windows_2019_x64 = $chef_downloads_root.Links |Where-Object {$_.href -like "*windows*" -and $_.href -like "*x64*" -and $_.href -like "*2019*"}|select href
+            - Invoke-WebRequest -Uri $chef_download_uri_windows_2019_x64.href.Replace('&#x2F;', '/') -OutFile $chef_download_location -UseBasicParsing
+            - msiexec /qn /i $chef_download_location
+
+  - name: validate
+    steps:
+      - name: HelloWorldStep
+        action: ExecutePowerShell
+        inputs:
+          commands:
+            - if (chef-client --version) { return $true }
+
+  - name: test
+    steps:
+      - name: HelloWorldStep
+        action: ExecutePowerShell
+        inputs:
+          commands:
+            - $fn = "'" + $env:TMP.Replace('\','\\') + "\\hello.txt'"
+            - if (chef-apply --chef-license 'accept-silent' -e "file $fn `n end") { return $true }
+            - if (chef-apply --chef-license 'accept-silent' -e "file $fn `n action :delete `n end") { return $true }
