@@ -22,7 +22,9 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - ec2:DescribeImages # For describing images shared with Account by ImageBuilder Account
+                - imagebuilder:ListComponents # For describing existing components
+                - imagebuilder:CreateComponent # For creating new components
+              Resource: '*'
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
