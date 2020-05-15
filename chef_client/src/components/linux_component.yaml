@@ -1,24 +1,26 @@
 name: install_chef_linux
 description: This component installs the Chef Client on Linux
 schemaVersion: 1.0
-version: 1.0.1
 
 phases:
-  - name: download
+
+  - name: build
     steps:
+      - name: InstallWget
+        action: ExecuteBash
+        inputs:
+          commands:
+            - sudo yum install wget -y
       - name: DownloadChefStep
         action: ExecuteBash
         inputs:
           commands:
-            - wget https://omnitruck.chef.io/install.sh -O /tmp/install_chef.sh
-
-  - name: build
-    steps:
+            - wget https://omnitruck.chef.io/install.sh -O install_chef.sh
       - name: InstallChefStep
         action: ExecuteBash
         inputs:
           commands:
-            - sudo /bin/bash /tmp/install_chef.sh
+            - sudo /bin/bash install_chef.sh
 
   - name: validate
     steps:
@@ -42,4 +44,4 @@ phases:
         action: ExecuteBash
         inputs:
           commands:
-            - rm -f /tmp/install_chef.sh
+            - rm -f install_chef.sh

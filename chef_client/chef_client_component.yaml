@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: image-builder-component-chef
+Conditions:
+  GovCloudCondition: !Equals 
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+Resources:
+  CreateChefComponents:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: CreateChefComponents
+      Code: chef_component_lambda_code.zip
+      Description: Create Image Builder Components for Chef
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt 
+        - LambdaRole
+        - Arn
+      Runtime: python3.8
+      Timeout: 300
+  ChefComponentLinux:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateChefComponents
+        - Arn
+      Platform: Linux
+      Version: 1.0.0
+  ChefComponentWindows:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateChefComponents
+        - Arn
+      Platform: Windows
+      Version: 1.0.0
+  LambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /service-role/
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Ref IAMPolicyToManageImageBuilderComponents
+        - !Sub 
+          - >-
+            arn:${Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - Partition: !If 
+              - GovCloudCondition
+              - aws-us-gov
+              - aws
+  IAMPolicyToManageImageBuilderComponents:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: ManageImageBuilderComponents
+      Path: /service-role/
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ImageBuilderComponentManagement
+            Effect: Allow
+            Action:
+              - 'imagebuilder:ListComponents'
+              - 'imagebuilder:CreateComponent'
+              - 'imagebuilder:DeleteComponent'
+              - 'imagebuilder:TagResource'
+            Resource: '*'
+          - Sid: ImageBuilderServiceLinkedRole
+            Effect: Allow
+            Action:
+              - 'iam:CreateServiceLinkedRole'
+            Resource: arn:aws:iam::*:role/aws-service-role/imagebuilder.amazonaws.com/AWSServiceRoleForImageBuilder
+            Condition:
+              ForAllValues:StringEquals:
+                iam:AWSServiceName: imagebuilder.amazonaws.com

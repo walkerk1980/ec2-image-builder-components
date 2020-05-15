@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: image-builder-component-chef-codebucket
+Conditions:
+  GovCloudCondition: !Equals
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+Resources:
+  ImageBuilderCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join 
+        [
+          "-",
+          [ 
+              !Ref 'AWS::StackName',
+              !Ref 'AWS::AccountId'
+          ] 
+        ]
+      VersioningConfiguration:
+        Status: Enabled
+Outputs:
+  CodeBucketName:
+    Description: ImageBuilderCodeBucket
+    Value: !Ref ImageBuilderCodeBucket
+    Export:
+      Name: CodeBucketName

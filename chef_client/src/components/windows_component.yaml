@@ -1,7 +1,6 @@
 name: install_chef_windows
 description: This component installs the Chef Client on Windows.
 schemaVersion: 1.0
-version: 1.0.1
 
 phases:
   - name: build
