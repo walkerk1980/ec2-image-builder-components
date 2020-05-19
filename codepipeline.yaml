@@ -421,8 +421,7 @@ Resources:
                       - !Ref 'AWS::Region'
                       - 'image-builder-code-*/*'
                   - 'arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31'
-                  - 'arn:aws:lambda:*:*:function:CreateChefComponents'
-                  - 'arn:aws:lambda:*:*:function:CreateSSMComponents'
+                  - 'arn:aws:lambda:*:*:function:Create*Components'
                   - 'arn:aws:logs:*:*:log-group:/aws/codedeploy/image_builder_code_bucket'
                   - 'arn:aws:logs:*:*:log-group:/aws/codedeploy/image_builder_code_bucket:*'
               - Sid: DeploymentPerms3
