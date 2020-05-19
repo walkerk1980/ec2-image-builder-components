@@ -16,8 +16,8 @@ phases:
 
       # Discover and run unit tests in the 'tests' directory. For more information, see <https://docs.python.org/3/library/unittest.html#test-discovery>
       # - python -m unittest discover tests
-      - if [ $loglevel == 'DEBUG' ];then cat chef_client_component.yaml; fi
-      - aws cloudformation validate-template --template-body "$(cat chef_client_component.yaml)"
+      - if [ $loglevel == 'DEBUG' ];then cat src/splunk_forwarder/splunk_component.yaml; fi
+      - aws cloudformation validate-template --template-body "$(cat src/splunk_forwarder/splunk_component.yaml)"
   
   build:
     commands:
@@ -27,23 +27,27 @@ phases:
       # - S3_BUCKET="${S3_STACK_NAME}-$(aws sts get-caller-identity --query 'Account' --output text)"
       
       # Build Component Lambda Function artifacts from requirements and code
+      - if [ $loglevel == 'DEBUG' ];then pwd; ls; fi
       - python3 -m venv v-env
-      - source v-env/bin/activate && pip install -r src/requirements.txt && deactivate
-      - cd src
-      - zip -r9 ../chef_component_lambda_code.zip .
-      - cd ../v-env/lib/python3.8/site-packages
-      - zip -r9 ${OLDPWD}/../chef_component_lambda_code.zip .
-      - cd $OLDPWD/..
-      - if [ $loglevel == 'DEBUG' ];then ls; fi
+      - source v-env/bin/activate && pip install -qq -r src/splunk_forwarder/lambda/requirements.txt && deactivate
+      - cd src/splunk_forwarder/lambda
+      - zip -q -r9 ${CODEBUILD_SRC_DIR}/src/splunk_forwarder/component_lambda_code.zip .
+      - cd $CODEBUILD_SRC_DIR
+      - if [ $loglevel == 'DEBUG' ];then pwd; ls; fi
+      - cd v-env/lib/python3.8/site-packages
+      - zip -q -r9 ${CODEBUILD_SRC_DIR}/src/splunk_forwarder/component_lambda_code.zip .
 
       # Package the application by using AWS CloudFormation
+      - cd $CODEBUILD_SRC_DIR
+      - if [ $loglevel == 'DEBUG' ];then pwd; ls; fi
       - S3_PREFIX="image_builder_components"
       - cp -f $CODEBUILD_SRC_DIR_DeployCodeBucketOutput/code-bucket-exports.json .
       - CODE_BUCKET=$(cat code-bucket-exports.json|jq '.CodeBucketName'|sed 's/"//g')
       - if [ $loglevel == 'DEBUG' ];then echo $(echo $CODE_BUCKET; echo $S3_PREFIX); fi
-      - aws cloudformation package --template chef_client_component.yaml --s3-bucket $CODE_BUCKET --s3-prefix $S3_PREFIX --force-upload --output-template chef-template-export.yml
-      - if [ $loglevel == 'DEBUG' ];then cat chef-template-export.yml; fi
+      - if [ $loglevel == 'DEBUG' ];then pwd; ls; fi
+      - aws cloudformation package --template src/splunk_forwarder/splunk_component.yaml --s3-bucket $CODE_BUCKET --s3-prefix $S3_PREFIX --force-upload --output-template splunk-template-export.yml
+      - if [ $loglevel == 'DEBUG' ];then cat splunk-template-export.yml; fi
 
 artifacts:
   files:
-    - chef-template-export.yml
+    - splunk-template-export.yml

@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: image-builder-component-ssm
+Conditions:
+  GovCloudCondition: !Equals 
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+Resources:
+  CreateSSMComponents:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: CreateSSMComponents
+      Code: component_lambda_code.zip
+      Description: Create Image Builder Components for SSM
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role: 
+        Fn::ImportValue:
+          ManageComponentsLambdaRoleArn
+      Runtime: python3.8
+      Timeout: 300
+  SSMComponentLinux:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateSSMComponents
+        - Arn
+      Platform: Linux
+      Version: 1.0.0
+      ComponentTemplate:
+        name: RhelInstallSSMAgent
+        description: Installs SSM Agent on RHEL 7 and 8
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: DownloadAndInstall
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+          - name: validate
+            steps:
+              - name: HelloWorldStep
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo yum list --installed |grep amazon-ssm-agent

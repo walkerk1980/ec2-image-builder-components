@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: image-builder-component-chef
+Conditions:
+  GovCloudCondition: !Equals 
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+Resources:
+  CreateChefComponents:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: CreateChefComponents
+      Code: component_lambda_code.zip
+      Description: Create Image Builder Components for Chef
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role:
+        Fn::ImportValue:
+          ManageComponentsLambdaRoleArn
+      Runtime: python3.8
+      Timeout: 300
+  ChefComponentLinux:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateChefComponents
+        - Arn
+      Platform: Linux
+      Version: 1.0.0
+  ChefComponentWindows:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateChefComponents
+        - Arn
+      Platform: Windows
+      Version: 1.0.0

@@ -1,40 +1,11 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: image-builder-component-chef
+Description: iam-roles-policies-for-image-builder
 Conditions:
   GovCloudCondition: !Equals 
     - !Ref 'AWS::Region'
     - us-gov-west-1
 Resources:
-  CreateChefComponents:
-    Type: 'AWS::Lambda::Function'
-    Properties:
-      FunctionName: CreateChefComponents
-      Code: chef_component_lambda_code.zip
-      Description: Create Image Builder Components for Chef
-      Handler: lambda_function.lambda_handler
-      MemorySize: 128
-      Role: !GetAtt 
-        - LambdaRole
-        - Arn
-      Runtime: python3.8
-      Timeout: 300
-  ChefComponentLinux:
-    Type: 'Custom::ImageBuilderComponent'
-    Properties:
-      ServiceToken: !GetAtt 
-        - CreateChefComponents
-        - Arn
-      Platform: Linux
-      Version: 1.0.0
-  ChefComponentWindows:
-    Type: 'Custom::ImageBuilderComponent'
-    Properties:
-      ServiceToken: !GetAtt 
-        - CreateChefComponents
-        - Arn
-      Platform: Windows
-      Version: 1.0.0
-  LambdaRole:
+  ManageComponentsLambdaRole:
     Type: 'AWS::IAM::Role'
     Properties:
       Path: /service-role/
@@ -80,3 +51,11 @@ Resources:
             Condition:
               ForAllValues:StringEquals:
                 iam:AWSServiceName: imagebuilder.amazonaws.com
+Outputs:
+  ManageComponentsLambdaRoleArn:
+    Description: Lambda Role for Image Builder Component management
+    Value: !GetAtt
+      - ManageComponentsLambdaRole
+      - Arn
+    Export:
+      Name: ManageComponentsLambdaRoleArn

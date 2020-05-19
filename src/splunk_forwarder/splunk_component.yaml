@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: image-builder-component-splunk
+Conditions:
+  GovCloudCondition: !Equals 
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+Resources:
+  CreateSplunkComponents:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: CreateSplunkComponents
+      Code: component_lambda_code.zip
+      Description: Create Image Builder Components for Splunk
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role: 
+        Fn::ImportValue:
+          ManageComponentsLambdaRoleArn
+      Runtime: python3.8
+      Timeout: 300
+  SplunkComponentLinux:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateSplunkComponents
+        - Arn
+      Platform: Linux
+      Version: 1.0.0
+      ComponentTemplate:
+        name: InstallSplunkAgentLinux
+        description: Installs Splunk Agent on Amazon Linux and RHEL
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: DownloadAndInstall
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - wget -O splunk_universal_forwarder.rpm 'https://www.splunk.com/bin/splunk/DownloadActivityServlet?architecture=x86_64&platform=linux&version=8.0.3&product=universalforwarder&filename=splunkforwarder-8.0.3-a6754d8441bf-linux-2.6-x86_64.rpm&wget=true'
+                    - sudo yum install -y splunk_universal_forwarder.rpm
+                    - rm -f splunk_universal_forwarder.rpm
+          - name: validate
+            steps:
+              - name: ValidateStep
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo yum list --installed |grep splunk
+  SplunkComponentWindows:
+    Type: 'Custom::ImageBuilderComponent'
+    Properties:
+      ServiceToken: !GetAtt 
+        - CreateSplunkComponents
+        - Arn
+      Platform: Windows
+      Version: 1.0.0
+      ComponentTemplate:
+        name: InstallSplunkAgentWindows
+        description: Installs Splunk Agent on Windows Server 2019
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: DownloadAndInstall
+                action: ExecutePowerShell
+                inputs:
+                  commands:
+                    - $splunk_downloads_uri = 'https://www.splunk.com/bin/splunk/DownloadActivityServlet?architecture=x86_64&platform=windows&version=8.0.3&product=universalforwarder&filename=splunkforwarder-8.0.3-a6754d8441bf-x64-release.msi&wget=true'
+                    - $splunk_download_location = $env:TEMP + '\splunk_install.msi'
+                    - $splunk_downloads_root = Invoke-WebRequest -Uri $splunk_downloads_uri -UseBasicParsing
+                    - Invoke-WebRequest -Uri $splunk_download_uri_windows_2019_x64.href.Replace('&#x2F;','/') -OutFile $splunk_download_location -UseBasicParsing
+                    - msiexec /qn /i $splunk_download_location
+                    - rm $splunk_download_location
+          - name: validate
+            steps:
+              - name: ValidateStep
+                action: ExecutePowerShell
+                inputs:
+                  commands:
+                    - Write-Host
