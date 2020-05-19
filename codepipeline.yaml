@@ -659,7 +659,7 @@ Resources:
         GitCloneDepth: 1
         GitSubmodulesConfig:
           FetchSubmodules: false
-        BuildSpec: src/splunk_agent/splunk_component_buildspec.yml
+        BuildSpec: src/splunk_forwarder/splunk_component_buildspec.yml
         InsecureSsl: false
       SourceVersion: refs/heads/master
       Artifacts:
