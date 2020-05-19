@@ -56,7 +56,7 @@ Resources:
               Service:
                 - events.amazonaws.com
             Action: 'sts:AssumeRole'
-      Path: /
+      Path: /service-role/
       Policies:
         - PolicyName: cwe-pipeline-execution
           PolicyDocument:
@@ -130,7 +130,7 @@ Resources:
                   - Name
                 PollForSourceChanges: false
               RunOrder: 1
-        - Name: DeployCodeBucket
+        - Name: DeploySharedResources
           Actions:
             - Name: DeployBucketStack
               InputArtifacts:
@@ -153,7 +153,31 @@ Resources:
                   - - codedeploy
                     - !Ref 'AWS::Region'
                     - image-builder-code
-                TemplatePath: 'SourceArtifact::image_builder_code_bucket.yaml'
+                TemplatePath: 'SourceArtifact::src/image_builder_code_bucket.yaml'
+              RunOrder: 1
+            - Name: DeployIAMStack
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: DeployIAMOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                OutputFileName: iam-exports.json
+                RoleArn: !GetAtt 
+                  - CodeDeployServiceRole
+                  - Arn
+                StackName: !Join 
+                  - '-'
+                  - - codedeploy
+                    - !Ref 'AWS::Region'
+                    - image-builder-iam
+                TemplatePath: 'SourceArtifact::src/image_builder_iam_roles.yaml'
               RunOrder: 1
         - Name: ComponentBuild
           Actions:
@@ -170,6 +194,38 @@ Resources:
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref ChefComponentsCodeBuildProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"loglevel","value":"DEBUG","type":"PLAINTEXT"}]'
+              RunOrder: 1
+            - Name: SSMComponentBuild
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: DeployCodeBucketOutput
+              OutputArtifacts:
+                - Name: SSMComponentBuildOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref SSMComponentsCodeBuildProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"loglevel","value":"DEBUG","type":"PLAINTEXT"}]'
+              RunOrder: 1
+            - Name: SplunkComponentBuild
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: DeployCodeBucketOutput
+              OutputArtifacts:
+                - Name: SplunkComponentBuildOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref SplunkComponentsCodeBuildProject
                 PrimarySource: SourceArtifact
                 EnvironmentVariables: '[{"name":"loglevel","value":"DEBUG","type":"PLAINTEXT"}]'
               RunOrder: 1
@@ -195,8 +251,54 @@ Resources:
                   - '-'
                   - - codedeploy
                     - !Ref 'AWS::Region'
-                    - image-builder-components
+                    - image-builder-components-chef
                 TemplatePath: 'ChefComponentBuildOutput::chef-template-export.yml'
+              RunOrder: 1
+            - Name: DeploySSMComponent
+              InputArtifacts:
+                - Name: SSMComponentBuildOutput
+              OutputArtifacts:
+                - Name: SSMComponentDeployOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt 
+                  - CodeDeployServiceRole
+                  - Arn
+                StackName: !Join 
+                  - '-'
+                  - - codedeploy
+                    - !Ref 'AWS::Region'
+                    - image-builder-components-ssm
+                TemplatePath: 'SSMComponentBuildOutput::ssm-template-export.yml'
+              RunOrder: 1
+            - Name: DeploySplunkComponent
+              InputArtifacts:
+                - Name: SplunkComponentBuildOutput
+              OutputArtifacts:
+                - Name: SplunkComponentDeployOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt 
+                  - CodeDeployServiceRole
+                  - Arn
+                StackName: !Join 
+                  - '-'
+                  - - codedeploy
+                    - !Ref 'AWS::Region'
+                    - image-builder-components-splunk
+                TemplatePath: 'SplunkComponentBuildOutput::splunk-template-export.yml'
               RunOrder: 1
       ArtifactStore:
         Type: S3
@@ -222,7 +324,7 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole'
       Policies:
-        - PolicyName: AWS-CodeDeploy-Service-3
+        - PolicyName: AWS-CodeDeploy-Service-ib-components
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -232,34 +334,47 @@ Resources:
                 Condition:
                   StringEquals:
                     'iam:PassedToService': lambda.amazonaws.com
-                Resource: 'arn:aws:iam::*:role/service-role/codedeploy-*-image-builder-comp-LambdaRole-*'
-              - Sid: DeploymentPerms1
+                Resource: 'arn:aws:iam::*:role/service-role/codedeploy-*-imag-ManageComponentsLambdaRo-*'
+              - Sid: IAMPerms1
                 Effect: Allow
                 Action:
-                  - 'kms:EnableKey'
                   - 'iam:GetRole'
-                  - 'kms:Decrypt'
-                  - 'kms:UntagResource'
                   - 'iam:GetPolicy'
                   - 'iam:DeleteRole'
-                  - 'iam:DeleteUser'
-                  - 'kms:DisableKey'
-                  - 'kms:UpdateAlias'
-                  - 'kms:TagResource'
+                  - 'iam:DeletePolicy'
                   - 'iam:CreateServiceLinkedRole'
+                  - 'iam:CreatePolicy'
+                  - 'iam:PutRolePermissionsBoundary'
+                  - 'iam:CreateRole'
+                  - 'iam:ListPolicyVersions'
+                  - 'iam:DetachUserPolicy'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:CreateUser'
+                  - 'iam:DeleteUserPolicy'
+                  - 'iam:AttachUserPolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:PutUserPermissionsBoundary'
+                Resource:
+                  - 'arn:aws:iam::*:policy/service-role/Ec2DescribeImages'
+                  # For some reason iam:GetPolicy is only working without the path
+                  - 'arn:aws:iam::*:policy/service-role/ManageImageBuilderComponents'
+                  - 'arn:aws:iam::*:policy/ManageImageBuilderComponents'
+                  # end block 
+                  - 'arn:aws:iam::*:role/service-role/codedeploy-*-imag-ManageComponentsLambdaRo-*'
+              - Sid: KMSPerms1
+                Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
                   - 'kms:Encrypt'
                   - 'kms:GenerateDataKey'
-                  - 'kms:CreateAlias'
-                  - 'kms:CreateKey'
-                  - 'kms:DeleteAlias'
-                Resource: '*'
+                Resource: !Ref CodeBuildS3EncryptionKeyArn
               - Sid: DeploymentPerms2
                 Effect: Allow
                 Action:
                   - 'lambda:CreateFunction'
                   - 'lambda:TagResource'
                   - 'lambda:ListVersionsByFunction'
-                  - 'iam:DeletePolicy'
                   - 'lambda:GetFunctionConfiguration'
                   - 'cloudformation:CreateChangeSet'
                   - 'lambda:UntagResource'
@@ -274,14 +389,14 @@ Resources:
                   - 's3:GetBucketAcl'
                   - 'logs:PutLogEvents'
                   - 'lambda:UpdateAlias'
-                  - 'iam:CreatePolicy'
                   - 's3:PutObject'
                   - 's3:GetObject'
                   - 'lambda:UpdateFunctionCode'
-                  - 'iam:ListPolicyVersions'
                   - 'lambda:DeleteAlias'
                   - 'lambda:PublishVersion'
                   - 'lambda:DeleteFunctionConcurrency'
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
                   - 's3:GetBucketLocation'
                   - 's3:GetObjectVersion'
                   - 'lambda:CreateAlias'
@@ -305,10 +420,9 @@ Resources:
                     - - 'arn:aws:s3:::codedeploy'
                       - !Ref 'AWS::Region'
                       - 'image-builder-code-*/*'
-                  - 'arn:aws:iam::*:policy/service-role/Ec2DescribeImages'
-                  - 'arn:aws:iam::*:policy/service-role/ManageImageBuilderComponents'
                   - 'arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31'
                   - 'arn:aws:lambda:*:*:function:CreateChefComponents'
+                  - 'arn:aws:lambda:*:*:function:CreateSSMComponents'
                   - 'arn:aws:logs:*:*:log-group:/aws/codedeploy/image_builder_code_bucket'
                   - 'arn:aws:logs:*:*:log-group:/aws/codedeploy/image_builder_code_bucket:*'
               - Sid: DeploymentPerms3
@@ -316,36 +430,22 @@ Resources:
                 Action:
                   - 's3:PutAnalyticsConfiguration'
                   - 's3:PutAccelerateConfiguration'
-                  - 'iam:PutRolePermissionsBoundary'
-                  - 'iam:CreateRole'
                   - 's3:CreateBucket'
-                  - 'iam:AttachRolePolicy'
-                  - 'iam:CreateUser'
                   - 's3:PutEncryptionConfiguration'
-                  - 'iam:DetachRolePolicy'
                   - 's3:DeleteBucketWebsite'
-                  - 'iam:DeleteRolePolicy'
                   - 's3:PutLifecycleConfiguration'
                   - 's3:PutBucketAcl'
-                  - 'iam:DetachUserPolicy'
                   - 's3:DeleteBucket'
                   - 's3:PutBucketVersioning'
                   - 's3:PutBucketPublicAccessBlock'
-                  - 'iam:PutUserPermissionsBoundary'
                   - 's3:PutMetricsConfiguration'
-                  - 'iam:DeleteUserPolicy'
-                  - 'iam:AttachUserPolicy'
                   - 's3:PutReplicationConfiguration'
                   - 's3:PutBucketCORS'
                   - 's3:PutInventoryConfiguration'
                   - 's3:PutBucketNotification'
-                  - 'lambda:AddPermission'
                   - 's3:PutBucketWebsite'
                   - 's3:PutBucketLogging'
-                  - 'lambda:RemovePermission'
                 Resource:
-                  - 'arn:aws:lambda:*:*:function:CreateChefComponents'
-                  - 'arn:aws:iam::*:role/service-role/codedeploy-*-image-builder-comp-LambdaRole-*'
                   - !GetAtt
                     - CodePipelineArtifactStoreBucket
                     - Arn
@@ -383,8 +483,14 @@ Resources:
           PolicyDocument:
             Statement:
               - Action:
+                  - s3:*
+                Resource: 'arn:aws:s3:::*codepipelineartifactstor*'
+                Effect: Allow
+              - Action:
                   - 'iam:PassRole'
-                Resource: '*'
+                Resource: !GetAtt
+                  - CodeDeployServiceRole
+                  - Arn
                 Effect: Allow
                 Condition:
                   StringEqualsIfExists:
@@ -411,37 +517,8 @@ Resources:
                 Resource: '*'
                 Effect: Allow
               - Action:
-                  - 'codestar-connections:UseConnection'
-                Resource: '*'
-                Effect: Allow
-              - Action:
-                  - 'elasticbeanstalk:*'
-                  - 'ec2:*'
-                  - 'elasticloadbalancing:*'
-                  - 'autoscaling:*'
-                  - 'cloudwatch:*'
-                  - 's3:*'
-                  - 'sns:*'
-                  - 'cloudformation:*'
-                  - 'rds:*'
-                  - 'sqs:*'
-                  - 'ecs:*'
-                Resource: '*'
-                Effect: Allow
-              - Action:
                   - 'lambda:InvokeFunction'
                   - 'lambda:ListFunctions'
-                Resource: '*'
-                Effect: Allow
-              - Action:
-                  - 'opsworks:CreateDeployment'
-                  - 'opsworks:DescribeApps'
-                  - 'opsworks:DescribeCommands'
-                  - 'opsworks:DescribeDeployments'
-                  - 'opsworks:DescribeInstances'
-                  - 'opsworks:DescribeStacks'
-                  - 'opsworks:UpdateApp'
-                  - 'opsworks:UpdateStack'
                 Resource: '*'
                 Effect: Allow
               - Action:
@@ -464,27 +541,6 @@ Resources:
                 Effect: Allow
               - Effect: Allow
                 Action:
-                  - 'devicefarm:ListProjects'
-                  - 'devicefarm:ListDevicePools'
-                  - 'devicefarm:GetRun'
-                  - 'devicefarm:GetUpload'
-                  - 'devicefarm:CreateUpload'
-                  - 'devicefarm:ScheduleRun'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'servicecatalog:ListProvisioningArtifacts'
-                  - 'servicecatalog:CreateProvisioningArtifact'
-                  - 'servicecatalog:DescribeProvisioningArtifact'
-                  - 'servicecatalog:DeleteProvisioningArtifact'
-                  - 'servicecatalog:UpdateProduct'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'cloudformation:ValidateTemplate'
-                Resource: '*'
-              - Effect: Allow
-                Action:
                   - 'ecr:DescribeImages'
                 Resource: '*'
             Version: 2012-10-17
@@ -500,7 +556,7 @@ Resources:
         GitCloneDepth: 1
         GitSubmodulesConfig:
           FetchSubmodules: false
-        BuildSpec: chef_component_buildspec.yml
+        BuildSpec: src/chef/chef_component_buildspec.yml
         InsecureSsl: false
       SourceVersion: refs/heads/master
       Artifacts:
@@ -544,6 +600,100 @@ Resources:
         S3Logs:
           Status: DISABLED
           EncryptionDisabled: false
+  SSMComponentsCodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: image_builder_ssm_components
+      Source:
+        Type: CODECOMMIT
+        Location: !GetAtt 
+          - CodeCommitRepo
+          - CloneUrlHttp
+        GitCloneDepth: 1
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        BuildSpec: src/ssm_agent/ssm_component_buildspec.yml
+        InsecureSsl: false
+      SourceVersion: refs/heads/master
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Type: NO_CACHE
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: 'aws/codebuild/amazonlinux2-x86_64-standard:3.0'
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: []
+        PrivilegedMode: false
+        ImagePullCredentialsType: CODEBUILD
+      ServiceRole: !GetAtt 
+        - CodeBuildServiceRole
+        - Arn
+      TimeoutInMinutes: 20
+      QueuedTimeoutInMinutes: 60
+      EncryptionKey: !Ref CodeBuildS3EncryptionKeyArn
+      VpcConfig:
+        VpcId: !Ref CodeBuildVPCId
+        Subnets:
+          - !Ref CodeBuildPrivateSubnet1
+          - !Ref CodeBuildPrivateSubnet2
+        SecurityGroupIds:
+          - !Ref CodeBuildSecurityGroupId
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: /aws/codebuild/image_builder_ssm_components
+          StreamName: build
+        S3Logs:
+          Status: DISABLED
+          EncryptionDisabled: false
+  SplunkComponentsCodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: image_builder_splunk_components
+      Source:
+        Type: CODECOMMIT
+        Location: !GetAtt 
+          - CodeCommitRepo
+          - CloneUrlHttp
+        GitCloneDepth: 1
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        BuildSpec: src/splunk_agent/splunk_component_buildspec.yml
+        InsecureSsl: false
+      SourceVersion: refs/heads/master
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Type: NO_CACHE
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: 'aws/codebuild/amazonlinux2-x86_64-standard:3.0'
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: []
+        PrivilegedMode: false
+        ImagePullCredentialsType: CODEBUILD
+      ServiceRole: !GetAtt 
+        - CodeBuildServiceRole
+        - Arn
+      TimeoutInMinutes: 20
+      QueuedTimeoutInMinutes: 60
+      EncryptionKey: !Ref CodeBuildS3EncryptionKeyArn
+      VpcConfig:
+        VpcId: !Ref CodeBuildVPCId
+        Subnets:
+          - !Ref CodeBuildPrivateSubnet1
+          - !Ref CodeBuildPrivateSubnet2
+        SecurityGroupIds:
+          - !Ref CodeBuildSecurityGroupId
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: /aws/codebuild/image_builder_splunk_components
+          StreamName: build
+        S3Logs:
+          Status: DISABLED
+          EncryptionDisabled: false
   CodeBuildServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -557,13 +707,15 @@ Resources:
                 - codebuild.amazonaws.com
             Action: 'sts:AssumeRole'
       Policies:
-        - PolicyName: CodeBuildBasePolicy-image_builder_chef_components
+        - PolicyName: CodeBuildBasePolicy-image_builder_components
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Resource:
                   - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_chef_components'
                   - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_chef_components:*'
+                  - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_*_components'
+                  - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_*_components:*'
                 Action:
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
@@ -598,18 +750,19 @@ Resources:
                   - 'codebuild:BatchPutTestCases'
                 Resource:
                   - 'arn:aws:codebuild:*:*:report-group/image_builder_chef_components-*'
+                  - 'arn:aws:codebuild:*:*:report-group/image_builder_*_components-*'
         - PolicyName: CodeBuildCloudWatchLogsPolicy-image_builder_chef_components
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Resource:
-                  - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_chef_components'
-                  - ' arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_chef_components:*'
+                  - 'arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_*_components'
+                  - ' arn:aws:logs:*:*:log-group:/aws/codebuild/image_builder_*_components:*'
                 Action:
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
-        - PolicyName: CodeBuildVpcPolicy-image_builder_chef_components
+        - PolicyName: CodeBuildVpcPolicy-image_builder_components
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -641,10 +794,13 @@ Resources:
         - PolicyName: codebuild-image_builder_components-worker_policy
           PolicyDocument:
             Statement:
+              - Sid: ValidateTemplate
+                Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: '*'
               - Sid: VisualEditor0
                 Effect: Allow
                 Action:
-                  - 'kms:EnableKey'
                   - 'kms:Decrypt'
                   - 'kms:TagResource'
                   - 'kms:UntagResource'
@@ -652,11 +808,7 @@ Resources:
                   - 'kms:GenerateDataKey'
                   - 'kms:CreateAlias'
                   - 'kms:CreateKey'
-                  - 'kms:DeleteAlias'
-                  - 'kms:DisableKey'
-                  - 'kms:UpdateAlias'
-                  - 'cloudformation:ValidateTemplate'
-                Resource: '*'
+                Resource: !Ref CodeBuildS3EncryptionKeyArn
               - Sid: VisualEditor1
                 Effect: Allow
                 Action:
